@@ -1,0 +1,199 @@
+---
+title: "Sanket_Khamkar_Assignment MP2"
+author: "Sanket"
+date: "2024-10-25"
+output: html_document
+---
+
+
+```{r}
+
+
+options(repos = c(CRAN = "https://cloud.r-project.org"))
+library(readr)
+library(forecast)
+library(knitr)
+library(TTR)
+library(dplyr)
+library(ggplot2)
+
+data <- read.csv("C:/Users/Sanket Khamkar/Downloads/insurance.csv")
+names(data)
+#1. Create Timeseries
+quotes_ts <- ts(data$Quotes, start = c(2002, 1), frequency = 12)
+
+```
+#2 Verify how much history to include in your analysis.
+
+```{r}
+
+# Verify how much history to include in your analysis. 
+autoplot(quotes_ts) +
+  ggtitle("Quotes Time Series (Jan 2002 - Apr 2005)") +
+  xlab("Year") + ylab("Quotes")
+
+summary(quotes_ts)
+
+# There is absence of a strong trend, so here we do not need an extensive historical period.
+
+
+```
+3. Hypothesize if the dataset has trend, seasonality, or both. 
+If the time series plot shows a steady increase or decrease, then a trend likely exists. Otherwise, the data might simply be random or stationary without a trend.
+
+4. Verify using Acf
+5. Decompose the time series to confirm trend and seasonality
+```{r}
+
+acf(quotes_ts, main="ACF of Quotes Time Series")
+#As the ACF plot shows a rapid decline, a shorter history is sufficient, as older values have minimal influence on the forecast.
+
+#There are no regular spikes. If there are repeated spikes at fixed lags (e.g., every 12 lags for monthly data), then it indicates seasonality. No such pattern suggests that there is an absence of seasonality.
+
+
+#decomposed_ts <- decompose(Quotes_ts)
+decomposed_ts <- decompose(quotes_ts, type = "additive")
+plot(decomposed_ts)
+autoplot(decomposed_ts) +
+  ggtitle("Decomposition of Quotes Time Series")
+
+#The trend line does not show a consistent upward or downward movement. Instead, it appears relatively flat with a slight dip and rise, but overall, it doesn't display a strong trend. This suggests that there is no significant trend in the Quotes data, as the trend component is relatively stable and does not show a consistent direction over time.
+
+#The seasonal component shows repeated patterns, suggesting some degree of seasonality. However, the variations appear subtle and not very pronounced. This could indicate weak seasonality if it exists, but it's not very strong or consistent.
+
+
+```
+6. Chose an accuracy measure
+
+For simplicity and understandability, I recommend using MASE if the data values are not close to zero. I want to understand how much better or worse my model is compared to a naive benchmark and I want an accuracy measure that is robust across different scales and contexts.
+
+```{r}
+start(quotes_ts)  # Check the start period of the time series
+end(quotes_ts)    # Check the end period of the time series
+frequency(quotes_ts) # Check if it is monthly (should return 12)
+
+
+quotes_ts <- ts(data$Quotes, start = c(2002, 1), frequency = 12)  # Monthly frequency
+
+# Forecast horizon
+h <- 12
+
+
+# 1. Naive Forecast
+naive_forecast <- naive(quotes_ts, h = h)
+
+# 2. Average (Mean) Forecast
+mean_forecast <- meanf(quotes_ts, h = h)
+
+# 3. Exponential Smoothing (ETS)
+ets_model <- ets(quotes_ts)
+ets_forecast <- forecast(ets_model, h = h)
+
+# 4. Holt-Winters Model (using additive seasonality, if appropriate)
+# If there is no seasonality, it will focus on trend.
+hw_model <- HoltWinters(quotes_ts)
+hw_forecast <- forecast(hw_model, h = h)
+
+# 5. STL Decomposition Forecast
+stl_forecast <- stlf(quotes_ts, h = h)
+
+
+
+
+decomposed_add <- decompose(quotes_ts, type = "additive")
+decomposed_mult <- decompose(quotes_ts, type = "multiplicative")
+
+# Remove NA values from the trend component
+trend_add <- na.omit(decomposed_add$trend)
+trend_mult <- na.omit(decomposed_mult$trend)
+
+# Forecast based on decomposition (seasonal naive for decomposition)
+decomp_add_forecast <- naive(trend_add, h = 12)
+decomp_mult_forecast <- naive(trend_mult, h = 12)
+
+
+# Plot forecasts
+autoplot(naive_forecast) + ggtitle("Naive Forecast")
+autoplot(mean_forecast) + ggtitle("Mean Forecast")
+autoplot(ets_forecast) + ggtitle("Exponential Smoothing Forecast")
+autoplot(hw_forecast) + ggtitle("Holt-Winters Forecast")
+autoplot(decomp_add_forecast) + ggtitle("Decompose add Forecast")
+autoplot(decomp_mult_forecast) + ggtitle("Decompose multi Forecast")
+
+
+# Display results for all models
+print(naive_forecast)
+print(mean_forecast)
+print(ets_forecast)
+print(hw_forecast)
+print(decomp_add_forecast)
+print(decomp_mult_forecast)
+```
+
+8. Show model rank with accuracy measures
+```{r}
+# Load the necessary library
+library(forecast)
+accuracy(naive_forecast)
+accuracy(mean_forecast)
+accuracy(ets_forecast)
+accuracy(hw_forecast)
+accuracy(decomp_add_forecast)
+accuracy(decomp_mult_forecast)
+
+```
+Ranking Based on MASE:
+Decomposition Forecast (0.1502795)
+ETS Forecast (0.4470514)
+Naive Forecast (0.4584592)
+Holt-Winters Forecast (0.5238306)
+Mean Forecast (0.5698575)
+
+9. Choose which models and how are you going to use them for Forecasting
+
+The Decomposition models (both additive and multiplicative) have the lowest MASE, indicating they provided the most accurate forecasts on the training data.
+Since both the additive and multiplicative decomposition models yielded the same accuracy, you could use either one as the primary forecasting model. This model will provide reliable forecasts with low error and minimal residual correlation.
+Using this as the primary model for the next 12 months. The low MASE mean you can rely on it for accurate, consistent forecasts.
+
+10. Provide the forecast for the next 12 months (point and range) and explain why you feel confident with these forecasts
+```{r}
+# Load necessary libraries
+library(forecast)
+library(ggplot2)
+
+
+quotes_ts <- ts(data$Quotes, start = c(2002, 1), frequency = 12)  # Monthly frequency
+
+# Decompose the time series (using additive decomposition)
+decomposed_ts <- decompose(quotes_ts, type = "additive")
+trend_component <- decomposed_ts$trend
+seasonal_component <- decomposed_ts$seasonal
+
+# Remove NA values from trend component
+trend_component_clean <- na.omit(trend_component)
+
+# Forecast the trend component with a naive forecast, setting the horizon directly
+trend_forecast <- naive(trend_component_clean, h = 12)
+
+# Extend the seasonal component by recycling the last observed seasonal pattern
+seasonal_forecast <- rep(seasonal_component[(length(seasonal_component)-11):length(seasonal_component)], length.out = 12)
+
+# Combine trend and seasonal components for final forecast
+decomposition_forecast <- trend_forecast$mean + seasonal_forecast
+
+# ETS Model Forecast as a backup
+ets_model <- ets(quotes_ts)
+ets_forecast <- forecast(ets_model, h = 12)
+
+
+plot(quotes_ts, main = "12-Month Forecast for Quotes", ylab = "Quotes", xlab = "Year", xlim = c(2002, 2006))
+lines(decomposition_forecast, col = "blue", lwd = 2)  # Decomposition forecast
+lines(ets_forecast$mean, col = "red", lwd = 2)  # ETS forecast
+
+legend("bottomright", legend = c("Decomposition Forecast", "ETS Forecast"),
+       col = c("blue", "red"), lty = 1, lwd = 2)
+```
+
+Both models demonstrate accuracy, stability, and flexibility, making them well-suited for forecasting the next 12 months. The Decomposition Model provides reliable point forecasts, while the ETS Model’s intervals add a layer of confidence to accommodate potential future variations. Together, they provide a comprehensive forecasting approach, enhancing confidence in predictions for informed decision-making.
+
+
